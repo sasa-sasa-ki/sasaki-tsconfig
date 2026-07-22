@@ -1,0 +1,47 @@
+{
+  "name": "@sasa-sasa-ki/tsconfig",
+  "version": "0.1.0",
+  "description": "Strict shared TypeScript configurations for ESM and bundler-based projects.",
+  "license": "MIT",
+  "files": [
+    "base.json",
+    "app.json",
+    "node.json",
+    "web.json"
+  ],
+  "exports": {
+    ".": "./base.json",
+    "./base": "./base.json",
+    "./app": "./app.json",
+    "./node": "./node.json",
+    "./web": "./web.json"
+  },
+  "scripts": {
+    "test": "tsc -p tests/node/tsconfig.json && tsc -p tests/web/tsconfig.json"
+  },
+  "peerDependencies": {
+    "typescript": ">=5.9 <8"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.3",
+    "typescript": "^7.0.2"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sasa-sasa-ki/sasaki-tsconfig.git"
+  },
+  "bugs": {
+    "url": "https://github.com/sasa-sasa-ki/sasaki-tsconfig/issues"
+  },
+  "homepage": "https://github.com/sasa-sasa-ki/sasaki-tsconfig#readme",
+  "keywords": [
+    "typescript",
+    "tsconfig",
+    "esm",
+    "bundler",
+    "strict"
+  ]
+}

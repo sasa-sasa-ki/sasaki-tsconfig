@@ -1,0 +1,11 @@
+{
+  "extends": "../../node.json",
+  "compilerOptions": {
+    "typeRoots": [
+      "../types"
+    ]
+  },
+  "include": [
+    "src/**/*.ts"
+  ]
+}

@@ -1,0 +1,6 @@
+{
+  "extends": "../../web.json",
+  "include": [
+    "src/**/*.ts"
+  ]
+}
