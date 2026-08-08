@@ -1,0 +1,27 @@
+{
+  "schema": "memorizer-ci/repository-v1",
+  "enabled": true,
+  "branches": ["main"],
+  "scan": {
+    "webhook": true,
+    "fullSweep": true
+  },
+  "targets": [
+    {
+      "id": "package",
+      "root": ".",
+      "workflow": ".sasaki-ci/workflow.json",
+      "local": true,
+      "actionsFallback": true,
+      "actionsCheckout": [
+        "package.json",
+        "package-lock.json",
+        "base.json",
+        "app.json",
+        "node.json",
+        "web.json",
+        "tests"
+      ]
+    }
+  ]
+}
