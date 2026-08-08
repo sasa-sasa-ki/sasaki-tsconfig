@@ -1,0 +1,19 @@
+{
+  "schema": "memorizer-ci/v1",
+  "name": "sasaki-tsconfig test",
+  "commandTimeoutMinutes": 15,
+  "cleanWorkspace": true,
+  "reportStatus": true,
+  "steps": [
+    {
+      "name": "install",
+      "run": "npm ci",
+      "timeoutMinutes": 10
+    },
+    {
+      "name": "test",
+      "run": "npm test",
+      "timeoutMinutes": 15
+    }
+  ]
+}
