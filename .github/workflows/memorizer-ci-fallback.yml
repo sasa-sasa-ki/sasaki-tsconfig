@@ -1,0 +1,104 @@
+name: memorizer-ci fallback
+run-name: fallback / ${{ github.event.client_payload.job_id || github.event.client_payload.sha || github.sha }}
+
+on:
+  repository_dispatch:
+    types: [memorizer-ci-fallback]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: memorizer-ci-fallback-${{ github.event.client_payload.job_id || github.event.client_payload.sha || github.sha }}
+  cancel-in-progress: true
+
+jobs:
+  repository-dispatch:
+    name: memorizer-ci/target-fallback
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: trusted policyのみ取得
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          path: _policy
+          persist-credentials: false
+          sparse-checkout: .memorizer-ci/repository.json
+          sparse-checkout-cone-mode: false
+      - name: fallback policyを検証
+        id: policy
+        env:
+          EXPECTED_POLICY_DIGEST: ${{ github.event.client_payload.policy_digest }}
+          TARGET_ID: ${{ github.event.client_payload.target_id }}
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import { createHash } from "node:crypto";
+          import { appendFileSync, readFileSync } from "node:fs";
+          const text = readFileSync("_policy/.memorizer-ci/repository.json", "utf8");
+          const digest = createHash("sha256").update(text, "utf8").digest("hex");
+          const expected = process.env.EXPECTED_POLICY_DIGEST?.trim().toLowerCase() ?? "";
+          if (!/^[0-9a-f]{64}$/.test(expected) || digest !== expected) throw new Error("trusted repository policy changed");
+          const policy = JSON.parse(text);
+          const targetId = process.env.TARGET_ID?.trim() ?? "";
+          const target = policy?.schema === "memorizer-ci/repository-v1" && policy?.enabled === true && Array.isArray(policy.targets) ? policy.targets.find((entry) => entry?.id === targetId) : undefined;
+          const safePath = (value) => typeof value === "string" && value.length > 0 && !value.startsWith("/") && !value.endsWith("/") && !value.includes("\\") && !value.split("/").some((segment) => segment === ".." || segment.length === 0);
+          if (target === undefined || target.actionsFallback !== true || typeof target.root !== "string" || !safePath(target.workflow) || !Array.isArray(target.actionsCheckout) || target.actionsCheckout.length === 0 || !target.actionsCheckout.every((entry) => entry === "." || safePath(entry))) throw new Error("target fallback policy is invalid");
+          appendFileSync(process.env.GITHUB_OUTPUT, `root=${target.root}\nworkflow=${target.workflow}\n`, "utf8");
+          appendFileSync(process.env.GITHUB_OUTPUT, "sparse<<MEMORIZER_CI_PATHS\n", "utf8");
+          appendFileSync(process.env.GITHUB_OUTPUT, `${target.actionsCheckout.join("\n")}\nMEMORIZER_CI_PATHS\n`, "utf8");
+          NODE
+      - name: trusted workflowのみ取得
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          path: _trusted
+          persist-credentials: false
+          sparse-checkout: ${{ steps.policy.outputs.workflow }}
+          sparse-checkout-cone-mode: false
+      - name: 対象commitの許可pathのみ取得
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.client_payload.sha }}
+          path: _target
+          persist-credentials: false
+          sparse-checkout: ${{ steps.policy.outputs.sparse }}
+          sparse-checkout-cone-mode: false
+      - name: Node.jsを準備
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - name: trusted target workflowを実行
+        env:
+          MEMORIZER_CI_SHA: ${{ github.event.client_payload.sha }}
+          TARGET_ROOT: ${{ steps.policy.outputs.root }}
+          WORKFLOW_PATH: ${{ steps.policy.outputs.workflow }}
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE' 2>&1 | tee repository-workflow.log
+          import { readFileSync } from "node:fs";
+          import { spawnSync } from "node:child_process";
+          import path from "node:path";
+          const targetRepository = path.resolve("_target");
+          const trustedRepository = path.resolve("_trusted");
+          const targetRoot = path.resolve(targetRepository, process.env.TARGET_ROOT ?? ".");
+          const workflowPath = path.resolve(trustedRepository, process.env.WORKFLOW_PATH ?? "");
+          if ((targetRoot !== targetRepository && !targetRoot.startsWith(`${targetRepository}${path.sep}`)) || !workflowPath.startsWith(`${trustedRepository}${path.sep}`)) throw new Error("resolved path escapes checkout boundary");
+          const workflow = JSON.parse(readFileSync(workflowPath, "utf8"));
+          if (!new Set(["memorizer-ci/v1", "sasaki-ci/v1"]).has(workflow.schema) || !Array.isArray(workflow.steps) || workflow.steps.length === 0) throw new Error("invalid trusted repository workflow");
+          for (const [index, step] of workflow.steps.entries()) {
+            if (typeof step?.name !== "string" || typeof step?.run !== "string") throw new Error(`invalid workflow step: ${index}`);
+            const result = spawnSync(step.run, { cwd: targetRoot, env: { ...process.env, ...(step.env ?? {}) }, shell: true, stdio: "inherit", timeout: Number.isInteger(step.timeoutMinutes) ? step.timeoutMinutes * 60_000 : 15 * 60_000 });
+            if (result.error !== undefined) throw result.error;
+            if (result.status !== 0) process.exit(result.status ?? 1);
+          }
+          NODE
+      - name: 失敗ログを保存
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: memorizer-ci-target-fallback-diagnostics
+          path: repository-workflow.log
+          if-no-files-found: warn
+          retention-days: 3
